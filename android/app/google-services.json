@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "380869353358",
+    "project_id": "spen-f433d",
+    "storage_bucket": "spen-f433d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:380869353358:android:db4a1d2d6918bd817b4edf",
+        "android_client_info": {
+          "package_name": "com.example.spend_simple"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBXpTbYFnkNN2b88lcMjo_Yx_1RZrBJ1ys"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
