@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'home_page.dart';
+import 'signup_page2.dart';
+import 'signup_page1.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -209,7 +211,7 @@ class _LoginPageState extends State<LoginPage> {
                     Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => const LoginPage(),
+                        builder: (context) => const SignupPage1(),
                       ),
                     );
                   },

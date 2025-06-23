@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:spend_simple/welcome_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'home_page.dart';
+import 'login_page.dart';
+import 'signup_page1.dart';
+import 'signup_page2.dart';
+import 'summary_page.dart';
+import 'spending_page.dart';
+import 'profile_page.dart';
+import 'add_record_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized(); // 🟢 Needed before Firebase init
@@ -27,9 +35,17 @@ class MyApp extends StatelessWidget {
       title: 'Spend Simple',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.black),
       ),
       home: const WelcomePage(),
+      routes: {
+        '/summary': (context) => const SummaryPage(),
+        '/spending': (context) => const SpendingPage(),
+        '/profile': (context) => const ProfilePage(),
+        '/home': (context) => const HomePage(),
+        '/login': (context) => const LoginPage(),
+        '/addRecord': (context) => const AddRecordPage(),
+      },
     );
   }
 }

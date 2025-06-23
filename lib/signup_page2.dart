@@ -12,14 +12,30 @@ class SignupPage2 extends StatefulWidget {
 }
 
 class _SignupPage2State extends State<SignupPage2> {
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  int _passwordStrength = 0;
 
   @override
   void dispose() {
+    _usernameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  void _checkPasswordStrength(String password) {
+    int strength = 0;
+
+    if (password.length >= 6) strength++;
+    if (password.contains(RegExp(r'[A-Z]'))) strength++;
+    if (password.contains(RegExp(r'[0-9]'))) strength++;
+    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength++;
+
+    setState(() {
+      _passwordStrength = strength.clamp(0, 4);
+    });
   }
 
   @override
@@ -46,6 +62,18 @@ class _SignupPage2State extends State<SignupPage2> {
 
               const SizedBox(height: 100),
 
+              TextField(
+                controller: _usernameController,
+                decoration: InputDecoration(
+                  labelText: "Username",
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
               // Email Field
               TextField(
                 controller: _emailController,
@@ -69,6 +97,7 @@ class _SignupPage2State extends State<SignupPage2> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                 ),
+                onChanged: _checkPasswordStrength,
               ),
 
               const SizedBox(height: 16),
@@ -84,25 +113,18 @@ class _SignupPage2State extends State<SignupPage2> {
 
               const SizedBox(height: 10),
 
-              // Fake progress bar (for visual purposes)
               Row(
-                children: [
-                  Expanded(
-                    child: Container(height: 6, color: Colors.grey.shade300),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(height: 6, color: Colors.grey.shade400),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(height: 6, color: Colors.grey.shade400),
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Container(height: 6, color: Colors.grey.shade400),
-                  ),
-                ],
+                children: List.generate(4, (index) {
+                  return Expanded(
+                    child: Container(
+                      height: 6,
+                      margin: EdgeInsets.only(right: index < 3 ? 4 : 0),
+                      color: index < _passwordStrength
+                          ? Colors.green
+                          : Colors.grey.shade300,
+                    ),
+                  );
+                }),
               ),
 
               const SizedBox(height: 30),
@@ -126,14 +148,15 @@ class _SignupPage2State extends State<SignupPage2> {
                 child: ElevatedButton(
                   onPressed: () async {
                     try {
+                      final username = _usernameController.text.trim();
                       final email = _emailController.text.trim();
                       final password = _passwordController.text.trim();
 
-                      if (email.isEmpty || password.isEmpty) {
+                      if (username.isEmpty || email.isEmpty || password.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              'Email and password must not be empty',
+                              'Username, email and password must not be empty',
                             ),
                           ),
                         );
@@ -145,6 +168,19 @@ class _SignupPage2State extends State<SignupPage2> {
                             email: email,
                             password: password,
                           );
+
+                      final user = FirebaseAuth.instance.currentUser;
+
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user?.uid)
+                          .set({
+                        'uid': user?.uid,
+                        'username': username,
+                        'password': password,
+                        'email': email,
+                        'createdAt': Timestamp.now(),
+                      });
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Signup successful!')),

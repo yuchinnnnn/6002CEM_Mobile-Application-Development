@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'signup_page1.dart';
 import 'signup_page1.dart';
+import 'login_page.dart';
 
 class WelcomePage extends StatefulWidget {
   const WelcomePage ({super.key});
@@ -103,7 +104,11 @@ class _WelcomePageState extends State<WelcomePage> {
 
             // Login Button
             TextButton(
-              onPressed: () {},
+              onPressed: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const LoginPage()));
+              },
               child: Text(
                 "I have an account",
                 style: TextStyle(color: Colors.black87),
