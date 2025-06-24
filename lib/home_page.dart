@@ -69,6 +69,27 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Stream<QuerySnapshot> _getUserTransactions() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    debugPrint(uid);
+    return FirebaseFirestore.instance
+        .collection('transactions')
+        .where('userId', isEqualTo: uid)
+        // .orderBy('date', descending: true)
+        .limit(5) // Show only recent 5
+        .snapshots();
+  }
+
+  final Map<String, IconData> categoryIcons = {
+    'Food': Icons.fastfood,
+    'Transport': Icons.directions_car,
+    'Shopping': Icons.shopping_cart,
+    'Bills': Icons.receipt,
+    'Health': Icons.health_and_safety,
+    'Entertainment': Icons.movie,
+    'Others': Icons.category,
+  };
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -298,7 +319,9 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   Text("Recent Transactions"),
                   ElevatedButton(
-                      onPressed: (){},
+                      onPressed: (){
+                        Navigator.pushNamed(context, '/spending');
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
@@ -313,34 +336,65 @@ class _HomePageState extends State<HomePage> {
                   )
                 ],
               ),
-              ListView(
-                shrinkWrap: true,
-                physics: NeverScrollableScrollPhysics(),
-                children: [
-                  ListTile(
-                    leading: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(30),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.5),
-                            spreadRadius: 2,
-                            blurRadius: 5,
-                            offset: const Offset(0, 3),
+              StreamBuilder<QuerySnapshot>(
+                stream: _getUserTransactions(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return CircularProgressIndicator();
+                  }
+
+                  if (snapshot.hasError) {
+                    print('Error: ${snapshot.error}');
+                    return Text("Error loading transactions.");
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    print('No data found in transactions collection.');
+                    return Text("No recent transactions.");
+                  }
+
+                  // Debug print all documents
+                  for (var doc in snapshot.data!.docs) {
+                    print('Transaction: ${doc.data()}');
+                  }
+
+                  return ListView(
+                    shrinkWrap: true,
+                    physics: NeverScrollableScrollPhysics(),
+                    children: snapshot.data!.docs.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final category = data['category'] ?? 'Unknown';
+                      final description = data['description'] ?? '';
+                      final amount = data['amount']?.toStringAsFixed(2) ?? '0.00';
+
+                      return ListTile(
+                        leading: Container(
+                          decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(30),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.grey.withOpacity(0.5),
+                                  spreadRadius: 2,
+                                  blurRadius: 5,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ]
                           ),
-                        ]
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Icon(Icons.wallet, size: 30),
-                      ),
-                    ),
-                    title: Text("Groceries", style: TextStyle(fontWeight: FontWeight.bold),),
-                    subtitle: Text("Groceries", style: TextStyle(color: Colors.grey),),
-                    trailing: Text("\$50", style: TextStyle(fontWeight: FontWeight.bold),),
-                  ),
-                ])
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Icon(categoryIcons[category] ?? Icons.help_outline),
+                          ),
+                        ),
+                        title: Text(category, style: TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(description, style: TextStyle(color: Colors.grey)),
+                        trailing: Text('\$amount', style: TextStyle(fontWeight: FontWeight.bold)),
+                      );
+                    }).toList(),
+                  );
+                },
+              )
+
             ],
           ),
         ),
@@ -358,12 +412,16 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ),
-      floatingActionButton: const ClipOval(
+      floatingActionButton:
+      ClipOval(
         child: Material(
-          color: Color(0xFFDCB8BC),
+          color: const Color(0xFFDCB8BC),
           elevation: 10,
           child: InkWell(
-            child: SizedBox(
+            onTap: (){
+              Navigator.pushNamed(context, '/addRecord');
+            } ,
+            child: const SizedBox(
               width: 56,
               height: 56,
               child: Icon(
