@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'home_page.dart';
 import 'signup_page2.dart';
 import 'signup_page1.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,9 +15,30 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  final _storage = const FlutterSecureStorage();
+
   bool isChecked = false;
   final TextEditingController _loginEmail = TextEditingController();
   final TextEditingController _loginPassword = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  void _loadSavedCredentials() async {
+    String? savedEmail = await _storage.read(key: 'email');
+    String? savedPassword = await _storage.read(key: 'password');
+
+    if (savedEmail != null && savedPassword != null) {
+      setState(() {
+        _loginEmail.text = savedEmail;
+        _loginPassword.text = savedPassword;
+        isChecked = true;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -129,11 +151,18 @@ class _LoginPageState extends State<LoginPage> {
                       }
 
                       // ✅ Use login instead of signup
-                      await FirebaseAuth.instance
-                          .signInWithEmailAndPassword(
+                      await FirebaseAuth.instance.signInWithEmailAndPassword(
                         email: email,
                         password: password,
                       );
+
+                      // ✅ Save login info if "Remember me" is checked
+                      if (isChecked) {
+                        await _storage.write(key: 'email', value: email);
+                        await _storage.write(key: 'password', value: password);
+                      } else {
+                        await _storage.deleteAll();
+                      }
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Login successful!')),
