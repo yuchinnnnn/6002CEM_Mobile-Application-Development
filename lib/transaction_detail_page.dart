@@ -5,6 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'edit_transaction_page.dart';
 
 class TransactionDetailPage extends StatelessWidget {
   final Map<String, dynamic> transaction;
@@ -85,7 +86,7 @@ class TransactionDetailPage extends StatelessWidget {
       appBar: AppBar(
         centerTitle: true,
         title: const Text('Transaction Details',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -93,7 +94,7 @@ class TransactionDetailPage extends StatelessWidget {
         child: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
-              colors: [Color(0xFFB8C6DB), Color(0xFFF5F7FA)],
+              colors: [Color(0xFFF5F7FA), Color(0xFFe7ad99)],
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
             ),
@@ -113,8 +114,19 @@ class TransactionDetailPage extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      IconButton(onPressed: (){},
-                          icon: const Icon(Icons.edit_note_outlined, color: Colors.black54,),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => EditTransactionPage(
+                                transaction: transaction,
+                                docId: transaction['docId'], // Make sure this is passed
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.edit_note_outlined, color: Colors.black54),
                         tooltip: 'Edit Field',
                       )
                     ],

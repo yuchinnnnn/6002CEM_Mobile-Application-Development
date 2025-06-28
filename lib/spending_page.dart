@@ -13,6 +13,8 @@ class SpendingPage extends StatefulWidget {
 class _SpendingPageState extends State<SpendingPage> {
   String selectedCategory = 'All';
   String selectedType = 'All';
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   final List<String> _categories = [
     'All',
@@ -48,10 +50,15 @@ class _SpendingPageState extends State<SpendingPage> {
         .snapshots();
   }
 
+  DateTime? _startDate;
+  DateTime? _endDate;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFf2ede9),
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
         title: const Text('All Transactions', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         centerTitle: true,
         elevation: 0,
@@ -61,6 +68,29 @@ class _SpendingPageState extends State<SpendingPage> {
           padding: const EdgeInsets.all(12.0),
           child: Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Search by note or category...',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                      icon: Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                        : null,
+                  ),
+                  onChanged: (value) {
+                    setState(() => _searchQuery = value.toLowerCase());
+                  },
+                ),
+              ),
               // Filter Section
               Row(
                 children: [
@@ -91,8 +121,60 @@ class _SpendingPageState extends State<SpendingPage> {
                   ),
                 ],
               ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: _startDate ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null) {
+                          setState(() => _startDate = picked);
+                        }
+                      },
+                      child: Text(_startDate != null
+                          ? 'From: ${_startDate!.toLocal().toString().split(' ')[0]}'
+                          : 'Start Date'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: _endDate ?? DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null) {
+                          setState(() => _endDate = picked);
+                        }
+                      },
+                      child: Text(_endDate != null
+                          ? 'To: ${_endDate!.toLocal().toString().split(' ')[0]}'
+                          : 'End Date'),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        selectedCategory = 'All';
+                        selectedType = 'All';
+                        _startDate = null;
+                        _endDate = null;
+                      });
+                    },
+                    child: const Text("Clear Filters"),
+                  ),
+                ],
+              ),
               const SizedBox(height: 20),
-
               // Transaction List
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
@@ -116,7 +198,20 @@ class _SpendingPageState extends State<SpendingPage> {
                       final categoryMatch = selectedCategory == 'All' || selectedCategory == category;
                       final typeMatch = selectedType == 'All' || selectedType.toLowerCase() == recordType;
 
-                      return categoryMatch && typeMatch;
+                      final timestamp = data['date'];
+                      DateTime? txnDate = timestamp != null ? (timestamp as Timestamp).toDate() : null;
+
+                      final dateMatch = (_startDate == null || (txnDate != null && txnDate.isAfter(_startDate!.subtract(const Duration(days: 1))))) &&
+                          (_endDate == null || (txnDate != null && txnDate.isBefore(_endDate!.add(const Duration(days: 1)))));
+
+                      final note = data['note']?.toString().toLowerCase() ?? '';
+                      final categoryText = category.toLowerCase();
+
+                      final searchMatch = _searchQuery.isEmpty ||
+                          note.contains(_searchQuery) ||
+                          categoryText.contains(_searchQuery);
+
+                      return categoryMatch && typeMatch && dateMatch && searchMatch;
                     }).toList();
 
                     return ListView.separated(
@@ -133,33 +228,77 @@ class _SpendingPageState extends State<SpendingPage> {
                         final formattedAmount = isExpense ? "- RM${amount.toStringAsFixed(2)}" : "+ RM${amount.toStringAsFixed(2)}";
                         final amountColor = isExpense ? Colors.red : Colors.green;
 
-                        return InkWell(
-                          onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => TransactionDetailPage(transaction: data),
-                              ),
-                            );
+                        return Dismissible(
+                          key: ValueKey(doc.id),
+                          background: slideRightBackground(),   // Delete background
+                          secondaryBackground: slideLeftBackground(), // Edit background
+                          confirmDismiss: (direction) async {
+                            if (direction == DismissDirection.startToEnd) {
+                              // Delete
+                              final confirm = await showDialog(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('Delete Transaction'),
+                                  content: const Text('Are you sure you want to delete this transaction?'),
+                                  actions: [
+                                    TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+                                    TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Delete')),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                await doc.reference.delete();
+                                return true;
+                              }
+                              return false;
+                            } else {
+                              // Edit
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => TransactionDetailPage(transaction: {
+                                    ...data,
+                                    'docId': doc.id}
+                                  ), // Or to your Edit page
+                                ),
+                              );
+                              return false; // Don't dismiss when editing
+                            }
                           },
-                          child: Card(
-                            elevation: 3,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: const Color(0xFFE0E7FF),
-                                child: Icon(icon, color: Colors.deepPurple),
-                              ),
-                              title: Text(category, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              subtitle: Text(note, style: const TextStyle(color: Colors.grey)),
-                              trailing: Text(
-                                formattedAmount,
-                                style: TextStyle(color: amountColor, fontWeight: FontWeight.bold),
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => TransactionDetailPage(transaction: {
+                                    ...data,
+                                    'docId': doc.id, }
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Card(
+                              elevation: 3,
+                              color: Color(0xFFF7F6F3),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: const Color(0xFFDCB8BC),
+                                    child: Icon(icon, color: Colors.black),
+                                  ),
+                                  title: Text(category, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text(note, style: const TextStyle(color: Colors.grey)),
+                                  trailing: Text(
+                                    formattedAmount,
+                                    style: TextStyle(color: amountColor, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         );
-
                       },
                     );
                   },
@@ -169,6 +308,23 @@ class _SpendingPageState extends State<SpendingPage> {
           ),
         ),
       ),
+    );
+  }
+  Widget slideRightBackground() {
+    return Container(
+      color: Colors.red.shade300,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: const Icon(Icons.delete, color: Colors.white),
+    );
+  }
+
+  Widget slideLeftBackground() {
+    return Container(
+      color: Colors.blue.shade200,
+      alignment: Alignment.centerRight,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: const Icon(Icons.edit, color: Colors.white),
     );
   }
 }

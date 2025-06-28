@@ -236,16 +236,10 @@ class _HomePageState extends State<HomePage> {
               child: const Text("Cancel"),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 final trimmed = _newPresetController.text.trim();
                 if (trimmed.isNotEmpty && _selectedPresetCategory != null) {
-                  setState(() {
-                    _presetEntries.add({
-                      'text': trimmed,
-                      'category': _selectedPresetCategory!,
-                    });
-                  });
-                  _savePresets(); // 👈 Save after adding
+                  await _savePresetEntry(trimmed, _selectedPresetCategory!);
                   _newPresetController.clear();
                   Navigator.pop(context);
                 }
@@ -288,12 +282,28 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _showDeletePresetDialog(int index) {
+  Future<void> _deletePresetEntry(String id) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance
+        .collection('presets')
+        .doc(uid)
+        .collection('entries')
+        .doc(id)
+        .delete();
+
+    _loadPresets(); // Refresh after deletion
+  }
+
+  _showDeletePresetDialog(int index) {
+    final id = _presetEntries[index]['id']!;
+    final text = _presetEntries[index]['text']!;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text("Remove Preset"),
-        content: Text("Do you want to remove '${_presetEntries[index]['text']}'?"),
+        content: Text("Do you want to remove '$text'?"),
         actions: [
           TextButton(
             child: Text("Cancel"),
@@ -301,11 +311,8 @@ class _HomePageState extends State<HomePage> {
           ),
           ElevatedButton(
             child: Text("Remove"),
-            onPressed: () {
-              setState(() {
-                _presetEntries.removeAt(index);
-              });
-              _savePresets(); // Optional: Save updated presets
+            onPressed: () async {
+              await _deletePresetEntry(id);
               Navigator.pop(context);
             },
           ),
@@ -313,6 +320,8 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+
 
   // Save entry
   void _parseAndSaveQuickExpense(String input, String fallbackType, {String? overrideCategory}) async {
@@ -443,23 +452,44 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _loadPresets() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String> encodedList = prefs.getStringList('presetEntries') ?? [];
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('presets')
+        .doc(uid)
+        .collection('entries')
+        .get();
+
     setState(() {
-      _presetEntries = encodedList.map((e) {
-        // Convert string map back to actual map
-        final Map<String, String> entry = {};
-        final raw = e.replaceAll(RegExp(r'[{}]'), '').split(',');
-        for (var pair in raw) {
-          var kv = pair.split(':');
-          if (kv.length == 2) {
-            entry[kv[0].trim()] = kv[1].trim();
-          }
-        }
-        return entry;
+      _presetEntries = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return <String, String>{
+          'id': doc.id,
+          'text': data['text'] ?? '',
+          'category': data['category'] ?? 'Others',
+        };
       }).toList();
     });
   }
+
+  Future<void> _savePresetEntry(String text, String category) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance
+        .collection('presets')
+        .doc(uid)
+        .collection('entries')
+        .add({
+      'text': text,
+      'category': category,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    _loadPresets(); // Refresh the local list
+  }
+
 
   void _savePresets() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -822,9 +852,19 @@ class _HomePageState extends State<HomePage> {
                     Row(
                       children: [
                         Text("Add Quick Entry", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        IconButton(
-                          icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                          onPressed: _isListening ? _stopListening : _startListening,
+                        const SizedBox(width: 280),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            icon: Icon(Icons.add, color: Colors.black, size: 16,),
+                            tooltip: 'Add New Transaction Records',
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/addRecord');
+                            },
+                          ),
                         )
                       ],
                     ),
@@ -958,14 +998,13 @@ class _HomePageState extends State<HomePage> {
             onTap: (){
               Navigator.pushNamed(context, '/addRecord');
             } ,
-            child: const SizedBox(
+            child: SizedBox(
               width: 56,
               height: 56,
-              child: Icon(
-              CupertinoIcons.add,
-              size: 28,
-              color: Colors.white,
-              ),
+              child: IconButton(
+                icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                onPressed: _isListening ? _stopListening : _startListening,
+              )
             ),
           ),
         ),
