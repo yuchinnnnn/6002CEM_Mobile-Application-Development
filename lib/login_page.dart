@@ -27,6 +27,44 @@ class _LoginPageState extends State<LoginPage> {
     _loadSavedCredentials();
   }
 
+  void optDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Enter your email'),
+          content: TextField(
+            controller: _loginEmail,
+            decoration: const InputDecoration(hintText: 'Email'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => sendOtp(context, _loginEmail.text),
+              child: const Text('Send OTP'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void sendOtp(BuildContext context, String email) async {
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Password reset email sent to $email')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    }
+  }
+
   void _loadSavedCredentials() async {
     String? savedEmail = await _storage.read(key: 'email');
     String? savedPassword = await _storage.read(key: 'password');
@@ -111,7 +149,18 @@ class _LoginPageState extends State<LoginPage> {
                   const Text("Remember me"),
                   Padding(
                     padding: const EdgeInsets.only(left: 180),
-                    child: Text('Forget Password'),
+                    child: GestureDetector(
+                      onTap: () {
+                        optDialog(); // Replace this with your actual OTP sending logic
+                      },
+                      child: Text(
+                        'Forget Password',
+                        style: TextStyle(
+                          color: Colors.blue, // Optional: make it look like a link
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -253,7 +302,10 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   child: const Text(
                     "Sign Up",
-                    style: TextStyle(color: Colors.black),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,),
                   ),
                 ),
               ),

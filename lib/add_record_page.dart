@@ -15,6 +15,7 @@ class AddRecordPage extends StatefulWidget {
 class _AddRecordPageState extends State<AddRecordPage> {
   final _formKey = GlobalKey<FormState>();
 
+
   String? _selectedCategory;
   String? _selectedType;
   String ?_selectedPaymentType;
@@ -76,6 +77,39 @@ class _AddRecordPageState extends State<AddRecordPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Transaction saved to Firebase!')),
         );
+
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text("Record Saved"),
+              content: Text("Do you want to add another record or go back to the homepage?"),
+              actions: [
+                TextButton(
+                  child: Text("Add Another"),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // close dialog
+                    _formKey.currentState!.reset();
+                    _amountController.clear();
+                    _noteController.clear();
+                    setState(() {
+                      _selectedCategory = null;
+                      _selectedDate = DateTime.now();
+                    });
+                  },
+                ),
+                TextButton(
+                  child: Text("Go Back"),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // close dialog
+                    Navigator.of(context).pop(); // return to homepage
+                  },
+                ),
+              ],
+            );
+          },
+        );
+
 
         // Clear form
         _formKey.currentState!.reset();

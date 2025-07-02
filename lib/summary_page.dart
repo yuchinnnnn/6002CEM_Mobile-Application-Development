@@ -21,6 +21,10 @@ class _SummaryPageState extends State<SummaryPage> {
     return DateFormat('MMMM yyyy').format(date);
   });
 
+  List<MapEntry<String, double>> sortedEntries = [];
+  Map<String, Color> categoryColors = {};
+  final List<Color> barColors = [Colors.blueAccent, Colors.redAccent, Colors.green];
+
   @override
   void initState() {
     super.initState();
@@ -59,57 +63,57 @@ class _SummaryPageState extends State<SummaryPage> {
     setState(() {
       categoryTotals = tempTotals;
       totalSpending = tempSum;
+      sortedEntries = categoryTotals.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
     });
   }
 
-  List<PieChartSectionData> _buildPieChartSections() {
-    final List<Color> colors = [
-      Colors.redAccent, Colors.blueAccent, Colors.green, Colors.orange,
-      Colors.purple, Colors.teal, Colors.brown, Colors.cyan,
-    ];
+  List<BarChartGroupData> _buildBarChartData() {
+    categoryColors.clear();
 
-    final List<PieChartSectionData> sections = [];
-    int index = 0;
+    return List.generate(sortedEntries.length, (index) {
+      final entry = sortedEntries[index];
 
-    categoryTotals.forEach((category, amount) {
-      sections.add(
-        PieChartSectionData(
-          value: amount,
-          title: '${(amount / totalSpending * 100).toStringAsFixed(1)}%',
-          color: colors[index % colors.length],
-          radius: 50,
-          titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
+      final color = index < 3
+          ? barColors[index % barColors.length]
+          : Colors.grey.shade400;
+
+      categoryColors[entry.key] = color;
+
+      return BarChartGroupData(
+        x: index,
+        barRods: [
+          BarChartRodData(
+            toY: entry.value,
+            color: color,
+            width: 30,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ],
+        showingTooltipIndicators: [0],
       );
-      index++;
     });
-
-    final topCategories = categoryTotals.entries
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    final top3 = topCategories.take(3).toList();
-    
-    return sections;
   }
-
-
-
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFf2ede9),
       appBar: AppBar(
-        title: const Text('Monthly Summary'),
+        title: Text('Monthly Summary'),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Month Selector
             DropdownButton<String>(
               value: selectedMonth,
               isExpanded: true,
@@ -125,42 +129,90 @@ class _SummaryPageState extends State<SummaryPage> {
             ),
             const SizedBox(height: 20),
 
-            // Total Spending
             Text(
               'Total Spending: RM${totalSpending.toStringAsFixed(2)}',
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 20),
 
-            // Pie Chart
             categoryTotals.isEmpty
                 ? const Text("No spending data available for this month.")
                 : SizedBox(
               height: 250,
-              child: PieChart(
-                PieChartData(
-                  sections: _buildPieChartSections(),
-                  sectionsSpace: 2,
-                  centerSpaceRadius: 40,
+              child: BarChart(
+                BarChartData(
+                  alignment: BarChartAlignment.spaceAround,
+                  maxY: categoryTotals.values.fold(0.0, (prev, curr) => curr > prev ? curr : prev) * 1.2,
+                  barTouchData: BarTouchData(enabled: true),
+                  titlesData: FlTitlesData(
+                    bottomTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        getTitlesWidget: (value, meta) {
+                          if (value.toInt() < 0 || value.toInt() >= sortedEntries.length) {
+                            return const SizedBox();
+                          }
+                          final label = sortedEntries[value.toInt()].key;
+                          final isTop3 = value.toInt() < 3;
+
+                          return SideTitleWidget(
+                            space: 5,
+                            meta: meta,
+                            child: Text(
+                              isTop3 ? '🏆 $label' : label,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    leftTitles: AxisTitles(
+                      sideTitles: SideTitles(
+                        showTitles: true,
+                        reservedSize: 50,
+                        getTitlesWidget: (value, meta) {
+                          return Text('RM${value.toInt()}');
+                        },
+                      ),
+                    ),
+                    topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  ),
+                  borderData: FlBorderData(show: false),
+                  barGroups: _buildBarChartData(),
+                  gridData: FlGridData(show: true),
                 ),
               ),
             ),
 
-            // Category Breakdown Legend
             const SizedBox(height: 20),
-            ...categoryTotals.entries.map((entry) {
-              final color = _buildPieChartSections()[categoryTotals.keys.toList().indexOf(entry.key)].color;
+
+            Text(
+              'Avg Spending/Day: RM${(totalSpending / DateUtils.getDaysInMonth(DateTime.now().year, DateTime.now().month)).toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 16),
+            ),
+
+            const SizedBox(height: 20),
+            ...sortedEntries.map((entry) {
+              final color = categoryColors[entry.key] ?? Colors.grey;
+              final isTop3 = sortedEntries.indexOf(entry) < 3;
+
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Row(
                   children: [
                     Container(width: 12, height: 12, color: color),
                     const SizedBox(width: 8),
-                    Text('${entry.key}: RM${entry.value.toStringAsFixed(2)}'),
+                    Text(
+                      '${isTop3 ? '🏆 ' : ''}${entry.key}: RM${entry.value.toStringAsFixed(2)}',
+                      style: isTop3
+                          ? const TextStyle(fontWeight: FontWeight.bold)
+                          : null,
+                    ),
                   ],
                 ),
               );
-            }).toList()
+            }).toList(),
           ],
         ),
       ),

@@ -15,7 +15,10 @@ class _SignupPage2State extends State<SignupPage2> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  int _passwordStrength = 0;
+  String _password = '';
+  String _passwordStrength = '';
+  Color _strengthColor = Colors.grey;
+  double _strengthBarWidthFactor = 0.0;
 
   @override
   void dispose() {
@@ -26,17 +29,32 @@ class _SignupPage2State extends State<SignupPage2> {
   }
 
   void _checkPasswordStrength(String password) {
-    int strength = 0;
-
-    if (password.length >= 6) strength++;
-    if (password.contains(RegExp(r'[A-Z]'))) strength++;
-    if (password.contains(RegExp(r'[0-9]'))) strength++;
-    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength++;
-
     setState(() {
-      _passwordStrength = strength.clamp(0, 4);
+      if (password.isEmpty) {
+        _passwordStrength = '';
+        _strengthColor = Colors.grey;
+        _strengthBarWidthFactor = 0.0;
+      } else if (password.length < 6) {
+        _passwordStrength = 'Weak';
+        _strengthColor = Colors.red;
+        _strengthBarWidthFactor = 0.25;
+      } else if (password.length < 10) {
+        _passwordStrength = 'Medium';
+        _strengthColor = Colors.orange;
+        _strengthBarWidthFactor = 0.5;
+      } else if (RegExp(r'^(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])').hasMatch(password)) {
+        _passwordStrength = 'Strong';
+        _strengthColor = Colors.green;
+        _strengthBarWidthFactor = 1.0;
+      } else {
+        _passwordStrength = 'Good';
+        _strengthColor = Colors.blue;
+        _strengthBarWidthFactor = 0.75;
+      }
     });
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -100,34 +118,57 @@ class _SignupPage2State extends State<SignupPage2> {
                 onChanged: _checkPasswordStrength,
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 5),
 
               // Password rule text
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Use 8 or more characters with a mix of letters,\nnumbers & symbols.",
-                  style: TextStyle(color: Colors.grey),
-                ),
+              Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Use 8 or more characters with a mix of letters, numbers & symbols.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 10),
 
-              Row(
-                children: List.generate(4, (index) {
-                  return Expanded(
-                    child: Container(
-                      height: 6,
-                      margin: EdgeInsets.only(right: index < 3 ? 4 : 0),
-                      color: index < _passwordStrength
-                          ? Colors.green
-                          : Colors.grey.shade300,
+              if (_passwordStrength.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text(
+                    'Password Strength: $_passwordStrength',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: _strengthColor,
                     ),
-                  );
-                }),
-              ),
+                  ),
+                ),
+                SizedBox(height: 6),
+                Container(
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: _strengthBarWidthFactor,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _strengthColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 10),
 
               // Get Started Button (Gradient)
               Container(
@@ -264,10 +305,19 @@ class _SignupPage2State extends State<SignupPage2> {
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: const Text(
-                    "Sign In",
-                    style: TextStyle(color: Colors.black),
-                  ),
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/login');
+                    },
+                    child: Text(
+                      'Sign In',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black, // or your theme's primary color
+                      ),
+                    ),
+                  )
                 ),
               ),
             ],

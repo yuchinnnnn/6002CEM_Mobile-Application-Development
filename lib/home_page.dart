@@ -1,12 +1,15 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
+import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'main.dart';
+import 'notification_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,7 +18,31 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with RouteAware{
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    getTotalIncome();
+    getTotalSpending();
+    // Called when user navigates back to HomePage
+    setState(() {
+      _selectedIndex = 0;
+    });
+  }
+
+
   // For voice control
   late stt.SpeechToText _speech;
   bool _isListening = false;
@@ -112,6 +139,7 @@ class _HomePageState extends State<HomePage> {
 
   // For bottom navigation bar
   int _selectedIndex = 0;
+
 
   // For quick expense entry field
   final List<String> _categories = [
@@ -414,6 +442,8 @@ class _HomePageState extends State<HomePage> {
       'userId': FirebaseAuth.instance.currentUser!.uid,
     });
 
+    await getTotalSpending();
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Saved: $recordType RM$amount - $note')),
     );
@@ -423,10 +453,6 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // For pie chart
-  double totalSpend = 0.0;
-  double totalIncome = 0.0;
-
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -434,19 +460,19 @@ class _HomePageState extends State<HomePage> {
 
     switch (index) {
       case 0:
-        Navigator.pushReplacementNamed(context, '/home');
+        Navigator.pushNamed(context, '/home');
         break;
       case 1:
-        Navigator.pushReplacementNamed(context, '/summary');
+        Navigator.pushNamed(context, '/summary');
         break;
       case 2:
       // Not used, as index 2 is the FAB
         break;
       case 3:
-        Navigator.pushReplacementNamed(context, '/spending');
+        Navigator.pushNamed(context, '/spending');
         break;
       case 4:
-        Navigator.pushReplacementNamed(context, '/profile');
+        Navigator.pushNamed(context, '/profile');
         break;
     }
   }
@@ -484,10 +510,10 @@ class _HomePageState extends State<HomePage> {
         .add({
       'text': text,
       'category': category,
+      'userId':uid,
       'createdAt': FieldValue.serverTimestamp(),
     });
 
-    _loadPresets(); // Refresh the local list
   }
 
 
@@ -497,19 +523,86 @@ class _HomePageState extends State<HomePage> {
     prefs.setStringList('presetEntries', encodedList);
   }
 
+  double income = 0.0;
+  double spending = 0.0;
+
   @override
   void initState() {
     super.initState();
+
     _fetchUsername();
     _loadPresets();
+    getTotalIncome();
+    getTotalSpending();
+    sendDailySpendingSummary();
+    sendMonthlyReportNotification();
+    updateLastActiveTime();
+    checkInactiveUser();
+    checkInactivityNotification();
+    checkUnreadNotifications();
     _speech = stt.SpeechToText();
   }
 
-  @override
-  void dispose() {
-    _newPresetController.dispose();
-    super.dispose();
+  Future<void> getTotalIncome() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('transactions')
+        .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+        .where('recordType', isEqualTo: 'income')
+        .get();
+
+    double total = 0.0;
+    for (var doc in snapshot.docs) {
+      total += (doc['amount'] ?? 0).toDouble();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final incomeNotified = prefs.getString('income_notified_date') ?? '';
+    final today = DateTime.now();
+    final formattedToday = "${today.year}-${today.month}-${today.day}";
+
+    if (total > 100 && incomeNotified != formattedToday) {
+      await sendNotification(
+        'Great Job!',
+        'You’ve earned over RM1000 this month.',
+      );
+      await prefs.setString('income_notified_date', formattedToday);
+    }
+
+    setState(() {
+      income = total;
+    });
   }
+
+  Future<void> getTotalSpending() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('transactions')
+        .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+        .where('recordType', isEqualTo: 'expense')
+        .get();
+
+    double total = 0.0;
+    for (var doc in snapshot.docs) {
+      total += (doc['amount'] ?? 0).toDouble();
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final spendingNotified = prefs.getString('spending_notified_date') ?? '';
+    final today = DateTime.now();
+    final formattedToday = "${today.year}-${today.month}-${today.day}";
+
+    if (total > 100 && spendingNotified != formattedToday) {
+      await sendNotification(
+        'High Spending Alert',
+        'You’ve spent over RM100 this month.',
+      );
+      await prefs.setString('spending_notified_date', formattedToday);
+    }
+
+    setState(() {
+      spending = total;
+    });
+  }
+
 
   Future<void> _fetchUsername() async {
     try {
@@ -531,17 +624,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Stream<QuerySnapshot> _getUserTransactions() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    debugPrint(uid);
-    return FirebaseFirestore.instance
-        .collection('transactions')
-        .where('userId', isEqualTo: uid)
-        // .orderBy('date', descending: true)
-        .limit(5) // Show only recent 5
-        .snapshots();
-  }
-
   final Map<String, IconData> categoryIcons = {
     'Food & Beverage': Icons.fastfood,
     'Transport': Icons.directions_car,
@@ -552,428 +634,408 @@ class _HomePageState extends State<HomePage> {
     'Others': Icons.category,
   };
 
+  // Send notification function passing title and
+  Future<void> sendNotification(String title, String body) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .add({
+      'title': title,
+      'body': body,
+      'timestamp': Timestamp.now(),
+      'read': false,
+    });
+  }
+
+  // send daily spending summary notification
+  Future<void> sendDailySpendingSummary() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastSentDate = prefs.getString('daily_spending_notified') ?? '';
+
+    final today = DateTime.now();
+    final formattedToday = "${today.year}-${today.month}-${today.day}";
+
+    if (lastSentDate == formattedToday) return; // already sent today
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('transactions')
+        .where('type', isEqualTo: 'expense')
+        .where('date', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+        .get();
+
+    double total = 0;
+    for (var doc in snapshot.docs) {
+      final data = doc.data();
+      total += (data['amount'] ?? 0).toDouble();
+    }
+
+    if (total > 0) {
+      await sendNotification(
+        'Daily Spending',
+        "You've spent RM${total.toStringAsFixed(2)} today.",
+      );
+      await prefs.setString('daily_spending_notified', formattedToday);
+    }
+  }
+
+  Future<void> sendMonthlyReportNotification() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastSentMonth = prefs.getString('monthly_report_notified') ?? '';
+
+    final now = DateTime.now();
+    final currentMonth = "${now.year}-${now.month}";
+
+    if (lastSentMonth == currentMonth) return; // already sent this month
+
+    // Only send on the first day of the month
+    if (now.day == 1) {
+      await sendNotification(
+        'Monthly Report Ready',
+        "Your ${DateFormat('MMMM').format(now.subtract(Duration(days: 1)))} report is ready. Review your habits!",
+      );
+      await prefs.setString('monthly_report_notified', currentMonth);
+    }
+  }
+
+
+  // Future<void> sendMonthlyReportNotification() async {
+  //   final prefs = await SharedPreferences.getInstance();
+  //
+  //   // Simulate this as a new month every time (for testing)
+  //   final now = DateTime.now();
+  //   final currentMonth = "${now.year}-${now.month}";
+  //
+  //   // Temporarily skip checking SharedPreferences
+  //   await sendNotification(
+  //     'Monthly Report Ready',
+  //     "Your ${DateFormat('MMMM').format(now)} report is ready. Review your habits!",
+  //   );
+  //
+  //   // Still update SharedPreferences to simulate real behavior
+  //   await prefs.setString('monthly_report_notified', currentMonth);
+  // }
+
+  void updateLastActiveTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('last_active', DateTime.now().toIso8601String());
+  }
+
+  Future<void> checkInactiveUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastActiveStr = prefs.getString('last_active');
+    final lastNotified = prefs.getBool('inactive_user_notified') ?? false;
+
+    if (lastActiveStr == null) return;
+
+    final lastActive = DateTime.parse(lastActiveStr);
+    final now = DateTime.now();
+    final diff = now.difference(lastActive).inDays;
+
+    if (diff >= 7 && !lastNotified) {
+      await sendNotification(
+        'We miss you!',
+        'You haven’t logged any expenses for over a week. Let’s get back on track!',
+      );
+      await prefs.setBool('inactive_user_notified', true);
+    }
+
+    // Reset if user returns
+    if (diff < 7 && lastNotified) {
+      await prefs.setBool('inactive_user_notified', false);
+    }
+  }
+
+  Future<void> checkInactivityNotification() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lastNotified = prefs.getString('inactive_notified') ?? '';
+    final now = DateTime.now();
+    final today = "${now.year}-${now.month}-${now.day}";
+
+    if (lastNotified == today) return; // Already notified today
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final querySnapshot = await FirebaseFirestore.instance
+        .collection('transactions')
+        .where('userId', isEqualTo: uid)
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .get();
+
+    if (querySnapshot.docs.isEmpty) return;
+
+    final lastTxn = querySnapshot.docs.first.data();
+    final lastCreatedAt = (lastTxn['createdAt'] as Timestamp).toDate();
+    final daysSinceLastTxn = now.difference(lastCreatedAt).inDays;
+
+    if (daysSinceLastTxn >= 3) {
+      await sendNotification(
+          'It’s been a while!',
+          'You haven’t logged any transactions in the past 3 days. Stay on top of your budget!'
+      );
+      await prefs.setString('inactive_notified', today);
+    }
+  }
+
+  // Notification Icon Display
+  bool _hasUnreadNotifications = false;
+
+  Future<bool> hasUnreadNotifications() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return false;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('notifications')
+        .where('read', isEqualTo: false)
+        .limit(1)
+        .get();
+
+    return snapshot.docs.isNotEmpty;
+  }
+
+  Future<void> checkUnreadNotifications() async {
+    bool hasUnread = await hasUnreadNotifications();
+    setState(() {
+      _hasUnreadNotifications = hasUnread;
+    });
+  }
+
+
+
   @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    String uid = currentUser?.uid ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xFFf2ede9),
-      body: SafeArea(
+      body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+            // Header
+              Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                // Header display
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(left: 20, top: 20),
-                      child: _isLoading
-                          ? const CircularProgressIndicator()
-                          : Text.rich(
-                        TextSpan(
-                          children: [
-                            const TextSpan(
-                              text: "Hello, \n",
-                              style: TextStyle(
-                                fontFamily: 'SansSerif',
-                                fontSize: 30,
-                                fontWeight: FontWeight.normal,
-                              ),
-                            ),
-                            TextSpan(
-                              text: _username,
-                              style: const TextStyle(
-                                fontFamily: 'SansSerif',
-                                fontSize: 30,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 20),
-                      child: IconButton(
-                        alignment: Alignment.center,
-                          onPressed: (){},
-                          icon: Icon(Icons.circle_notifications_rounded, size: 30)
-                      ),
-                    ),
-                  ],
-                ),
-
-                // Filter button
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10, bottom: 10, right: 10),
-                          child: ElevatedButton(
-                            onPressed: (){},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 20,
-                                horizontal: 40,
-                              ),
-                            ),
-                            child:
-                            Text("All",
-                              style: TextStyle(
-                                  color: Colors.grey),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10, bottom: 10, right: 10),
-                          child: ElevatedButton(
-                            onPressed: (){},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 20,
-                                horizontal: 40,
-                              ),
-                            ),
-                            child:
-                            Text("Daily",
-                              style: TextStyle(
-                                  color: Colors.grey),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10, bottom: 10, right: 10),
-                          child: ElevatedButton(
-                            onPressed: (){},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 20,
-                                horizontal: 40,
-                              ),
-                            ),
-                            child:
-                            Text("Weekly",
-                              style: TextStyle(
-                                  color: Colors.grey),
-                            ),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(top: 10, bottom: 10, right: 10),
-                          child: ElevatedButton(
-                            onPressed: (){},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 20,
-                                horizontal: 40,
-                              ),
-                            ),
-                            child:
-                            Text("Monthly",
-                              style: TextStyle(
-                                  color: Colors.grey),
-                            ),
-                          ),
-                        ),
-                      ]
+                Text("Hello, ${_username.capitalize()}",
+                  style: const TextStyle(
+                  fontSize: 24,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-
-                // Expense chart
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.grey.withOpacity(0.5),
-                        spreadRadius: 2,
-                        blurRadius: 5,
-                        offset: const Offset(0, 3),
-                      ),
-                    ]
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(10.0),
-                    child: Row(
-                      children: [
-                        StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('transactions')
-                              .where('userId', isEqualTo: uid)
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return const CircularProgressIndicator();
-                            }
-
-                            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                              return const Text("No Data");
-                            }
-
-                            double totalIncome = 0.0;
-                            double totalSpend = 0.0;
-
-                            for (var doc in snapshot.data!.docs) {
-                              final data = doc.data() as Map<String, dynamic>;
-                              final amount = double.tryParse(data['amount'].toString()) ?? 0.0;
-                              final type = data['recordType'];
-
-                              if (type == 'income') {
-                                totalIncome += amount;
-                              } else if (type == 'expense') {
-                                totalSpend += amount;
-                              }
-                            }
-
-                            return Padding(
-                              padding: const EdgeInsets.all(10.0),
-                              child: Row(
-                                children: [
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(children: [
-                                        Container(
-                                          width: 16,
-                                          height: 16,
-                                          decoration: BoxDecoration(
-                                            color: Color(0xFF98aeb6), // match your pie chart income color
-                                            shape: BoxShape.circle,   // or BoxShape.rectangle if you prefer
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        const Text(
-                                          "Income",
-                                          style: TextStyle(
-                                            color: Colors.grey,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                      ]),
-                                      Text(
-                                          'RM${totalIncome.toStringAsFixed(2)}',
-                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Row(children: [
-                                        Container(
-                                          width: 16,
-                                          height: 16,
-                                          decoration: BoxDecoration(
-                                            color: Color(0xFFD77988), // match your pie chart income color
-                                            shape: BoxShape.circle,   // or BoxShape.rectangle if you prefer
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        const Text(
-                                          "Spend",
-                                          style: TextStyle(
-                                            color: Colors.grey,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                      ]),
-                                      Text(
-                                        'RM${totalSpend.toStringAsFixed(2)}',
-                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                                      )
-                                    ],
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 120, top: 20, bottom: 20),
-                                    child: SizedBox(
-                                      width: 130,
-                                      height: 130,
-                                      child: PieChart(
-                                        PieChartData(
-                                          sections: [
-                                            PieChartSectionData(
-                                              value: (((totalIncome - totalSpend) / totalIncome) * 100),
-                                              color: const Color(0xFF98aeb6),
-                                              radius: 50,
-                                            ),
-                                            PieChartSectionData(
-                                              value: (totalSpend/totalIncome)*100,
-                                              color: const Color(0xFFD77988),
-                                              radius: 50,
-                                            ),
-                                          ],
-                                          centerSpaceRadius: 40,
-                                          sectionsSpace: 2,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-
-                      ],
-                    )
-                  )
-                ),
-
-                SizedBox(height: 20),
-
-                // Add Quick Entry
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Stack(
                   children: [
-                    Row(
-                      children: [
-                        Text("Add Quick Entry", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(width: 280),
-                        Container(
+                    IconButton(
+                      icon: const Icon(Icons.notifications),
+                      onPressed: () {
+                        setState(() {
+                          _hasUnreadNotifications = false;
+                        });
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const NotificationPage()),
+                        );
+                      },
+                    ),
+                    if (_hasUnreadNotifications)
+                      Positioned(
+                        right: 11,
+                        top: 11,
+                        child: Container(
+                          width: 10,
+                          height: 10,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: Colors.red,
                             shape: BoxShape.circle,
                           ),
-                          child: IconButton(
-                            icon: Icon(Icons.add, color: Colors.black, size: 16,),
-                            tooltip: 'Add New Transaction Records',
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/addRecord');
-                            },
-                          ),
-                        )
-                      ],
-                    ),
-                    quickEntryField(),
-                    const SizedBox(height: 10),
-                    presetButtons(),
-                  ],
-                ),
-
-                SizedBox(height: 20),
-
-                // Recent transaction list
-                Row(
-                  children: [
-                    Text("Recent Transactions",
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(left: 200),
-                      child: ElevatedButton(
-                          onPressed: (){
-                            Navigator.pushNamed(context, '/spending');
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 10,
-                              horizontal: 20,
-                            ),
-                          ),
-                          child: Text("See All >")
+                        ),
                       ),
-                    )
                   ],
                 ),
-                StreamBuilder<QuerySnapshot>(
-                  stream: _getUserTransactions(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return CircularProgressIndicator();
-                    }
 
-                    if (snapshot.hasError) {
-                      print('Error: ${snapshot.error}');
-                      return Text("Error loading transactions.");
-                    }
-
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      print('No data found in transactions collection.');
-                      return Text("No recent transactions.");
-                    }
-
-                    // Debug print all documents
-                    for (var doc in snapshot.data!.docs) {
-                      print('Transaction: ${doc.data()}');
-                    }
-
-                    return ListView(
-                      shrinkWrap: true,
-                      physics: NeverScrollableScrollPhysics(),
-                      children: snapshot.data!.docs.map((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        final category = data['category'] ?? 'Others';
-                        final icon = categoryIcons[category] ?? Icons.help_outline;
-                        final note = data['note'] ?? '';
-                        final amount = data['amount']?.toStringAsFixed(2) ?? '0.00';
-                        final isExpense = data['recordType'] == 'expense';
-                        final formattedAmount = isExpense ? "-RM$amount" : "+RM$amount";
-                        final amountColor = isExpense ? Colors.red : Colors.green;
-
-                        return ListTile(
-                          leading: Container(
-                            decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(30),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.grey.withOpacity(0.5),
-                                    spreadRadius: 2,
-                                    blurRadius: 5,
-                                    offset: const Offset(0, 3),
-                                  ),
-                                ]
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Icon(icon, color: Color(0xDCB8BCFF)),
-                            ),
-                          ),
-                          title: Text(category, style: TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Text(note, style: TextStyle(color: Colors.grey)),
-                          trailing: Text(formattedAmount,
-                            style: TextStyle(
-                              color: amountColor,
-                              fontWeight: FontWeight.bold,
-                            ),),
-                        );
-                      }).toList(),
-                    );
-                  },
-                )
               ],
             ),
+
+            // Filter buttons
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: ["All", "Daily", "Weekly", "Monthly"].map((label) {
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 10, right: 10),
+                    child: ElevatedButton(
+                      onPressed: () {},
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 20,
+                          horizontal: 40,
+                        ),
+                      ),
+                      child: Text(label, style: const TextStyle(color: Colors.grey)),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+
+            // Expense Summary Chart
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: 150,
+                        child: PieChart(
+                          PieChartData(
+                            sections: [
+                              PieChartSectionData(
+                                color: Colors.blue,
+                                value: income,
+                                title: 'Income',
+                                radius: 50,
+                                titleStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                              PieChartSectionData(
+                                color: Colors.red,
+                                value: spending,
+                                title: 'Spending',
+                                radius: 50,
+                                titleStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const Text("Income: "),
+                          Text("RM${income.toStringAsFixed(2)}"),
+                          Spacer(),
+                          const Text("Spending: "),
+                          Text("RM${spending.toStringAsFixed(2)}"),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 20),
+
+            // Quick Entry
+            Row(
+              children: [
+                const Text("Add Quick Entry", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Spacer(),
+                Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.add, color: Colors.black, size: 16),
+                    tooltip: 'Add New Transaction Records',
+                    onPressed: () {
+                      Navigator.pushNamed(context, '/addRecord');
+                    },
+                  ),
+                ),
+              ],
+            ),
+            quickEntryField(),
+            const SizedBox(height: 10),
+            presetButtons(),
+
+            const SizedBox(height: 20),
+
+            // Recent Transactions
+            Row(
+              children: [
+                const Text("Recent Transactions", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Spacer(),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/spending');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 20),
+                  ),
+                  child: const Text("See All >"),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+              StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('transactions')
+                    .where('userId', isEqualTo: FirebaseAuth.instance.currentUser?.uid)
+                    .orderBy('date', descending: true)
+                    .limit(5)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator());
+                  }
+                  final transactions = snapshot.data?.docs ?? [];
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    print("Transaction count: ${snapshot.data!.docs.length}");
+                    return Text("No recent transactions found."); // Helps confirm it's not UI issue
+                  }
+                  return Column(
+                    children: transactions.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final type = data['recordType'];
+                      final amount = data['amount'] ?? 0;
+                      final category = data['category'] ?? 'Other';
+                      return ListTile(
+                        leading: Icon(
+                          type == 'income' ? Icons.arrow_upward : Icons.arrow_downward,
+                          color: type == 'income' ? Colors.green : Colors.red,
+                        ),
+                        title: Text(category),
+                        trailing: Text(
+                          "${type == 'expense' ? '-' : '+'}RM${amount.toStringAsFixed(2)}",
+                          style: TextStyle(
+                            color: type == 'income' ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
+            const SizedBox(height: 80),
+            ],
           ),
         ),
-      ),
+    ),
 
       // Bottom navigation bar
       bottomNavigationBar: BottomAppBar(

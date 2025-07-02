@@ -137,16 +137,20 @@ class _SignupPage1State extends State<SignupPage1> {
                 )
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 50),
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                   child:
                   TextButton(
                       onPressed: () {
                         Navigator.push(context, MaterialPageRoute(builder: (context) => const SignupPage2()));
                       },
-                      child: Text(
-                      "Sign Up with Email",
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+                    child: Text(
+                      'Sign Up with Email',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: Colors.black
+                      ),
                   )
                 ),
               )

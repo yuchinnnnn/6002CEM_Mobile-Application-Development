@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'signup_page1.dart';
-import 'signup_page1.dart';
+import 'signup_page2.dart';
 import 'login_page.dart';
 
 class WelcomePage extends StatefulWidget {
@@ -51,12 +51,30 @@ class _WelcomePageState extends State<WelcomePage> {
             // Subtitle / Description
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 50),
-              child: Text(
-                "Track your daily spending, manage your budget, and take control of your finances — all in one simple app.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[800]),
+              child: Column(
+                children: [
+                  Text(
+                    'Take control of your money.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  SizedBox(height: 10),
+                  Text(
+                    'Track your spending, manage your budget, and stay on top of your finances — all in one simple app.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
               ),
             ),
+
 
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 50),
@@ -103,16 +121,14 @@ class _WelcomePageState extends State<WelcomePage> {
 
 
             // Login Button
-            TextButton(
+            TextButton.icon(
               onPressed: () {
                 Navigator.push(
                     context,
                     MaterialPageRoute(builder: (context) => const LoginPage()));
               },
-              child: Text(
-                "I have an account",
-                style: TextStyle(color: Colors.black87),
-              ),
+              icon: Icon(Icons.login, size: 18),
+              label: Text('I have an account'),
             ),
           ],
         ),

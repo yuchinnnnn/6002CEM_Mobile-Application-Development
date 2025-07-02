@@ -62,6 +62,13 @@ class _SpendingPageState extends State<SpendingPage> {
         title: const Text('All Transactions', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         centerTitle: true,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.pop(context);
+          },
+        ),
+
       ),
       body: SafeArea(
         child: Padding(
