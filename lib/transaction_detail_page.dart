@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:pdf/pdf.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'edit_transaction_page.dart';
+
 
 class TransactionDetailPage extends StatelessWidget {
   final Map<String, dynamic> transaction;
@@ -14,12 +16,18 @@ class TransactionDetailPage extends StatelessWidget {
 
   static Future<pw.Document> buildPdf(Map<String, dynamic> transaction) async {
     final pdf = pw.Document();
+
     final id = transaction['id'] ?? 'TXN-${DateTime.now().millisecondsSinceEpoch}';
     final isExpense = transaction['recordType'] == 'expense';
     final amount = transaction['amount']?.toDouble() ?? 0.0;
     final formattedDate = transaction['date'] != null
         ? DateFormat('dd MMM yyyy, hh:mm a').format(transaction['date'].toDate())
         : 'No date';
+
+    final docId = transaction['docId'] ?? 'N/A';
+    final userName = transaction['userName'] ?? 'John Doe'; // Replace with actual user info if available
+    final userEmail = transaction['userEmail'] ?? 'johndoe@example.com'; // Optional
+    final verificationCode = id.hashCode.toRadixString(16).padLeft(6, '0').toUpperCase();
 
     pw.Widget pdfText(String label, String value) {
       return pw.Padding(
@@ -35,12 +43,23 @@ class TransactionDetailPage extends StatelessWidget {
 
     pdf.addPage(
       pw.Page(
-        build: (pw.Context context) => pw.Center(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) => pw.Padding(
+          padding: const pw.EdgeInsets.all(24),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text("Transaction Receipt", style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-              pw.SizedBox(height: 20),
+              pw.Center(
+                child: pw.Text(
+                  "SpendSimple Transaction Receipt",
+                  style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
+                ),
+              ),
+              pw.SizedBox(height: 24),
+              pdfText("User:", userName),
+              pdfText("Email:", userEmail),
+              pw.Divider(),
+
               pdfText("Transaction ID:", id),
               pdfText("Amount:", "${isExpense ? '-' : '+'} RM${amount.toStringAsFixed(2)}"),
               pdfText("Category:", transaction['category']),
@@ -49,6 +68,24 @@ class TransactionDetailPage extends StatelessWidget {
               pdfText("Type:", transaction['recordType']),
               pdfText("Date:", formattedDate),
               pdfText("Status:", transaction['status'] ?? "Completed"),
+
+              pw.SizedBox(height: 20),
+              pdfText("Verification Code:", verificationCode),
+              pw.Divider(),
+
+              pw.SizedBox(height: 40),
+              pw.Center(
+                child: pw.Text(
+                  "Thank you for using SpendSimple!",
+                  style: pw.TextStyle(fontSize: 12, color: PdfColors.grey),
+                ),
+              ),
+              pw.Center(
+                child: pw.Text(
+                  "Need help? support@spendsimple.app",
+                  style: pw.TextStyle(fontSize: 10, color: PdfColors.grey),
+                ),
+              ),
             ],
           ),
         ),
@@ -179,10 +216,14 @@ class TransactionDetailPage extends StatelessWidget {
                     children: [
                       const SizedBox(height: 20),
                       QrImageView(
-                        data: 'receipt:${transaction['id']}', // OR use a full link
+                        data: transaction['docId'], // Only the Firestore docId
                         size: 100,
                         backgroundColor: Colors.white,
                       ),
+                      // QrImageView(
+                      //   data: 'http://192.168.0.135:5000/receipt/${transaction['docId']}',
+                      //   size: 100,
+                      // ),
                       const SizedBox(height: 8),
                       Text(
                         'Scan to View Receipt',
