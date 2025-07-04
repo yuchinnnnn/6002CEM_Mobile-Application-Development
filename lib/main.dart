@@ -6,14 +6,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'home_page.dart';
 import 'login_page.dart';
-import 'signup_page1.dart';
-import 'signup_page2.dart';
 import 'summary_page.dart';
 import 'spending_page.dart';
 import 'profile_page.dart';
 import 'add_record_page.dart';
 import 'theme_provider.dart';
-import 'notification_page.dart';
+import 'widget/main_scaffold.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
 
@@ -54,18 +52,21 @@ class MyApp extends StatelessWidget {
       navigatorObservers: [routeObserver],
       // themeMode: themeProvider.themeMode,
       // darkTheme: ThemeData.dark(),
-      home: FirebaseAuth.instance.currentUser == null
-          ? const WelcomePage()
-          : const HomePage(),
-      routes: {
-        '/summary': (context) => const SummaryPage(),
-        '/spending': (context) => const SpendingPage(),
-        '/profile': (context) => const ProfilePage(),
-        '/home': (context) => const HomePage(),
-        '/login': (context) => const LoginPage(),
-        '/addRecord': (context) => const AddRecordPage(),
-        '/notification': (context) => const NotificationPage(),
-      },
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          } else if (snapshot.hasData) {
+            return const MainScaffold();
+          } else {
+            return const WelcomePage();
+          }
+        },
+      ),
+
 
     );
   }

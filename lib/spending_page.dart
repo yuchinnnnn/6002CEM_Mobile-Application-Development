@@ -16,6 +16,9 @@ class _SpendingPageState extends State<SpendingPage> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  String _selectedSort = 'Newest';
+  final List<String> _sortOptions = ['Newest', 'Oldest', 'Amount ↑', 'Amount ↓'];
+
   final List<String> _categories = [
     'All',
     'Food & Beverage',
@@ -104,7 +107,11 @@ class _SpendingPageState extends State<SpendingPage> {
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       value: selectedCategory,
-                      decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                      decoration: InputDecoration(labelText: 'Category',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
                       items: _categories
                           .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
                           .toList(),
@@ -117,7 +124,11 @@ class _SpendingPageState extends State<SpendingPage> {
                   Expanded(
                     child: DropdownButtonFormField<String>(
                       value: selectedType,
-                      decoration: const InputDecoration(labelText: 'Type', border: OutlineInputBorder()),
+                      decoration: InputDecoration(labelText: 'Type',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                       items: _recordTypes
                           .map((type) => DropdownMenuItem(value: type, child: Text(type)))
                           .toList(),
@@ -181,7 +192,31 @@ class _SpendingPageState extends State<SpendingPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                value: _selectedSort,
+                decoration: InputDecoration(
+                  labelText: 'Sort By',
+                  prefixIcon: Icon(Icons.sort, color: Colors.grey.shade700),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                ),
+                items: _sortOptions.map((option) {
+                  return DropdownMenuItem<String>(
+                    value: option,
+                    child: Text(option),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedSort = value);
+                  }
+                },
+              ),
+
+              const SizedBox(height: 10),
               // Transaction List
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
@@ -220,6 +255,28 @@ class _SpendingPageState extends State<SpendingPage> {
 
                       return categoryMatch && typeMatch && dateMatch && searchMatch;
                     }).toList();
+
+                    filteredDocs.sort((a, b) {
+                      final ascDate = (a['date'] as Timestamp).toDate();
+                      final dscDate = (b['date'] as Timestamp).toDate();
+                      final aAmt = a['amount']?.toDouble() ?? 0.0;
+                      final bAmt = b['amount']?.toDouble() ?? 0.0;
+
+                      switch (_selectedSort) {
+                        case 'Newest':
+                          return dscDate.compareTo(ascDate);
+                        case 'Oldest':
+                          return ascDate.compareTo(dscDate);
+                        case 'Amount ↑':
+                          return aAmt.compareTo(bAmt);
+                        case 'Amount ↓':
+                          return bAmt.compareTo(aAmt);
+                        default:
+                          return 0;
+                      }
+                    });
+
+
 
                     return ListView.separated(
                       itemCount: filteredDocs.length,

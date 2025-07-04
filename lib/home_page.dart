@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'main.dart';
 import 'notification_page.dart';
 
@@ -40,96 +38,6 @@ class _HomePageState extends State<HomePage> with RouteAware{
     setState(() {
       _selectedIndex = 0;
     });
-  }
-
-  // For voice control
-  late stt.SpeechToText _speech;
-  bool _isListening = false;
-  String _voiceText = '';
-
-  void _startListening() async {
-    bool available = await _speech.initialize();
-    if (available) {
-      setState(() => _isListening = true);
-      _speech.listen(
-        onResult: (result) {
-          if (result.finalResult) {
-            setState(() {
-              _voiceText = result.recognizedWords;
-              _showVoiceConfirmDialog(); // Show the dialog for confirmation
-            });
-          }
-        },
-      );
-    }
-  }
-
-  void _stopListening() {
-    _speech.stop();
-    setState(() => _isListening = false);
-  }
-
-  void _showVoiceConfirmDialog() {
-    String selectedCategory = 'Others';
-    TextEditingController _controller = TextEditingController(text: _voiceText);
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: Text('Confirm Entry'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _controller,
-                decoration: InputDecoration(
-                  hintText: 'e.g. RM5 Coffee',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                value: selectedCategory,
-                decoration: InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
-                ),
-                items: _categories.map((cat) => DropdownMenuItem(
-                  value: cat,
-                  child: Text(cat),
-                )).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    selectedCategory = value!;
-                  });
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _parseAndSaveQuickExpense(
-                  _controller.text,
-                  _selectedType,
-                  overrideCategory: selectedCategory, // 👈 pass override
-                );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Saved: ${_controller.text}')),
-                );
-              },
-              child: Text('Save'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
 // For username display
@@ -452,29 +360,6 @@ class _HomePageState extends State<HomePage> with RouteAware{
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    switch (index) {
-      case 0:
-        Navigator.pushNamed(context, '/home');
-        break;
-      case 1:
-        Navigator.pushNamed(context, '/summary');
-        break;
-      case 2:
-      // Not used, as index 2 is the FAB
-        break;
-      case 3:
-        Navigator.pushNamed(context, '/spending');
-        break;
-      case 4:
-        Navigator.pushNamed(context, '/profile');
-        break;
-    }
-  }
 
   void _loadPresets() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -524,10 +409,18 @@ class _HomePageState extends State<HomePage> with RouteAware{
 
   double income = 0.0;
   double spending = 0.0;
+  bool showOverspendingWarning = false;
 
   @override
   void initState() {
     super.initState();
+
+    Future.delayed(Duration(milliseconds: 1500  ), () {
+      setState(() {
+        showOverspendingWarning = true;
+      });
+    });
+
 
     _fetchUsername();
     _loadPresets();
@@ -539,7 +432,6 @@ class _HomePageState extends State<HomePage> with RouteAware{
     checkInactiveUser();
     checkInactivityNotification();
     checkUnreadNotifications();
-    _speech = stt.SpeechToText();
   }
 
   Future<void> getTotalIncome() async {
@@ -559,7 +451,7 @@ class _HomePageState extends State<HomePage> with RouteAware{
     final today = DateTime.now();
     final formattedToday = "${today.year}-${today.month}-${today.day}";
 
-    if (total > 100 && incomeNotified != formattedToday) {
+    if (total > 1000 && incomeNotified != formattedToday) {
       await sendNotification(
         'Great Job!',
         'You’ve earned over RM1000 this month.',
@@ -815,6 +707,10 @@ class _HomePageState extends State<HomePage> with RouteAware{
   }
 
 
+  bool isOverspending(double income, double spending) {
+    return spending > income;
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -923,134 +819,183 @@ class _HomePageState extends State<HomePage> with RouteAware{
             ),
 
             // Expense Summary Chart
-            Card(
-              elevation: 4,
-              color: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(40.0),
-                child: (income == 0 && spending == 0)
-                    ? Center(
-                  child: Column(
-                    children: const [
-                      Icon(Icons.info_outline, size: 40, color: Colors.grey),
-                      SizedBox(height: 8),
-                      Text(
-                        "No data available",
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey,
-                          fontWeight: FontWeight.w500,
+              Card(
+                elevation: 4,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: (income == 0 && spending == 0)
+                      ? Center(
+                    child: Column(
+                      children: const [
+                        Icon(Icons.info_outline, size: 40, color: Colors.grey),
+                        SizedBox(height: 8),
+                        Text(
+                          "No data available",
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                      : Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // LEFT: Income & Spend display
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (income > 0) ...[
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 20,
+                                    height: 16,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF98aeb6),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    "Income",
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'RM${income.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                            ],
+                            if (spending > 0) ...[
+                              Row(
+                                children: [
+                                  Container(
+                                    width: 20,
+                                    height: 16,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFFD77988),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    "Spend",
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'RM${spending.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      // RIGHT: Pie Chart + Warning stacked
+                      SizedBox(
+                        width: 250,
+                        child: Column(
+                          children: [
+                            AnimatedScale(
+                              scale: showOverspendingWarning ? 1.0 : 0.8,
+                              duration: Duration(milliseconds: 500),
+                              curve: Curves.easeOutBack,
+                              child: SizedBox(
+                                height: 140,
+                                width: 140,
+                                child: PieChart(
+                                  PieChartData(
+                                    sections: [
+                                      PieChartSectionData(
+                                        value: income,
+                                        color: Colors.blueGrey,
+                                        title:
+                                        '${((income / (income + spending)) * 100).toStringAsFixed(0)}%',
+                                      ),
+                                      PieChartSectionData(
+                                        value: spending,
+                                        color: Colors.pinkAccent,
+                                        title:
+                                        '${((spending / (income + spending)) * 100).toStringAsFixed(0)}%',
+                                      ),
+                                    ],
+                                    centerSpaceRadius: 30,
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 8),
+                            if (isOverspending(income, spending)) ...[
+                              AnimatedOpacity(
+                                opacity: showOverspendingWarning && isOverspending(income, spending) ? 1.0 : 0.0,
+                                duration: Duration(milliseconds: 600),
+                                child: AnimatedSlide(
+                                  offset: showOverspendingWarning && isOverspending(income, spending) ? Offset(0, 0) : Offset(0, 0.2),
+                                  duration: Duration(milliseconds: 600),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: const [
+                                          Icon(Icons.warning_amber_rounded, color: Colors.red, size: 16),
+                                          SizedBox(width: 4),
+                                          Flexible(
+                                            child: Text(
+                                              "You're spending more than your income!",
+                                              style: TextStyle(
+                                                color: Colors.red,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        "Overspent by RM${(spending - income).toStringAsFixed(2)}",
+                                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     ],
                   ),
-                )
-                    : Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Left: Income & Spend display
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (income > 0) ...[
-                          Row(
-                            children: [
-                              Container(
-                                width: 16,
-                                height: 16,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF98aeb6),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                "Income",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'RM${income.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                        ],
-                        if (spending > 0) ...[
-                          Row(
-                            children: [
-                              Container(
-                                width: 16,
-                                height: 16,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFD77988),
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Text(
-                                "Spend",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'RM${spending.toStringAsFixed(2)}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-
-                    const Spacer(),
-
-                    // Right: Pie Chart (Only if income > 0)
-                    if (income > 0)
-                      SizedBox(
-                        width: 130,
-                        height: 130,
-                        child: PieChart(
-                          PieChartData(
-                            sections: [
-                              PieChartSectionData(
-                                value: ((income - spending) / income) * 100,
-                                color: const Color(0xFF98aeb6),
-                                radius: 50,
-                              ),
-                              PieChartSectionData(
-                                value: (spending / income) * 100,
-                                color: const Color(0xFFD77988),
-                                radius: 50,
-                              ),
-                            ],
-                            centerSpaceRadius: 40,
-                            sectionsSpace: 2,
-                          ),
-                        ),
-                      ),
-                  ],
                 ),
               ),
-            ),
 
-            const SizedBox(height: 20),
+              const SizedBox(height: 20),
 
             // Quick Entry
             Row(
@@ -1110,7 +1055,7 @@ class _HomePageState extends State<HomePage> with RouteAware{
                   }
                   final transactions = snapshot.data?.docs ?? [];
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    print("Transaction count: ${snapshot.data!.docs.length}");
+                    // print("Transaction count: ${snapshot.data!.docs.length}");
                     return Text("No recent transactions found."); // Helps confirm it's not UI issue
                   }
                   return Column(
@@ -1160,66 +1105,6 @@ class _HomePageState extends State<HomePage> with RouteAware{
           ),
         ),
     ),
-
-      // Bottom navigation bar
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.white,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            buildNavBarItem(CupertinoIcons.house_fill, 'Home', 0),
-            buildNavBarItem(CupertinoIcons.chart_bar_square, 'Summary', 1),
-            const SizedBox(width: 20, height: 15,),
-            buildNavBarItem(CupertinoIcons.money_dollar_circle, 'Spending', 3),
-            buildNavBarItem(CupertinoIcons.profile_circled, 'Profile', 4),
-          ],
-        ),
-      ),
-      floatingActionButton:
-      ClipOval(
-        child: Material(
-          color: const Color(0xFFDCB8BC),
-          elevation: 10,
-          child: InkWell(
-            onTap: (){
-              Navigator.pushNamed(context, '/addRecord');
-            } ,
-            child: SizedBox(
-              width: 56,
-              height: 56,
-              child: IconButton(
-                icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                onPressed: _isListening ? _stopListening : _startListening,
-              )
-            ),
-          ),
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-    );
-  }
-  Widget buildNavBarItem(IconData icon, String label, int index) {
-    return InkWell(
-      onTap: () => _onItemTapped(index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            color: _selectedIndex == index
-                ? const Color(0xFFD77988)
-                : Colors.black87,
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              color: _selectedIndex == index
-                  ? const Color(0xFFD77988)
-                  : Colors.black87,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

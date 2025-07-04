@@ -1,14 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'theme_provider.dart';
 import 'dart:html' as html;
-import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
-import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -26,21 +21,19 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _isDarkMode = false;
   String? userImageUrl;
 
+  final _currentPasswordController = TextEditingController();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
+
+
   @override
   void initState() {
     super.initState();
     _nameController.text = user?.displayName ?? '';
-    _loadProfileImage();
+    _checkEmailVerification();
   }
 
-  void _loadProfileImage() async {
-    final doc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-    setState(() {
-      userImageUrl = doc.data()?['profileImage'];
-    });
-  }
-
-  void pickAndUploadImage() async {
+  void pickImageOnly() async {
     final uploadInput = html.FileUploadInputElement()..accept = 'image/*';
     uploadInput.click();
 
@@ -51,35 +44,23 @@ class _ProfilePageState extends State<ProfilePage> {
       final reader = html.FileReader();
       reader.readAsDataUrl(file);
 
-      reader.onLoadEnd.listen((event) async {
+      reader.onLoadEnd.listen((event) {
         final base64Image = reader.result.toString();
-        final rawBase64 = reader.result.toString().split(',').last;
-
-
-        // You can use this to display image temporarily
-        setState(() => userImageUrl = base64Image);
-
-        // Upload to Cloudinary
-        final response = await http.post(
-          Uri.parse('https://api.cloudinary.com/v1_1/dlq1nlfsk/image/upload'),
-          body: {
-            'file': base64Encode(base64Decode(rawBase64)), // OR just use rawBase64
-            'upload_preset': 'unsigned_preset',
-          },
-        );
-
-        if (response.statusCode == 200) {
-          final imageUrl = jsonDecode(response.body)['secure_url'];
-          print("✅ Upload success: $imageUrl");
-          // You can now save this imageUrl to Firestore
-        } else {
-          print("❌ Upload failed: ${response.body}");
-        }
+        setState(() => userImageUrl = base64Image); // Just preview it
       });
     });
   }
 
+
   void _updateDisplayName() async {
+
+    if (!_emailVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Verify your email to update your profile.")),
+      );
+      return;
+    }
+
     try {
       await user?.updateDisplayName(_nameController.text.trim());
       await user?.reload();
@@ -94,11 +75,105 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  bool _emailVerified = false;
+  bool _emailStatusLoaded = false;
+  bool _sendingVerification = false;
+
+  void _checkEmailVerification() async {
+    await user?.reload();
+    final refreshedUser = FirebaseAuth.instance.currentUser;
+
+    setState(() {
+      _emailVerified = refreshedUser?.emailVerified ?? false;
+      _emailStatusLoaded = true;
+    });
+  }
+
+
+  Future<bool> _reauthenticate(String email, String password) async {
+    try {
+      final credential = EmailAuthProvider.credential(email: email, password: password);
+      await FirebaseAuth.instance.currentUser!.reauthenticateWithCredential(credential);
+      return true;
+    } catch (e) {
+      print(" Reauth failed: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Login failed: ${e.toString()}")),
+      );
+      return false;
+    }
+  }
+
+
+  void _changePassword() async {
+
+    if (!_requireVerifiedEmail()) return;
+
+    final currentPassword = _currentPasswordController.text.trim();
+    final newPassword = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (newPassword != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("New passwords do not match")),
+      );
+      return;
+    }
+
+    final email = user!.email!;
+    bool reauthed = await _reauthenticate(email, currentPassword);
+
+    if (!reauthed) return;
+
+    try {
+      await user!.updatePassword(newPassword);
+
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .update({'password': newPassword});
+
+      _currentPasswordController.clear();
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Password updated successfully")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Password update failed: ${e.toString()}")),
+      );
+    }
+  }
+
+  bool _requireVerifiedEmail() {
+    if (!_emailVerified) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Action blocked. Please verify your email.")),
+      );
+      return false;
+    }
+    return true;
+  }
+
+
   void _signOut() async {
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/login');
   }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -117,7 +192,7 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(
           children: [
             GestureDetector(
-              onTap: pickAndUploadImage,
+              onTap: pickImageOnly,
               child: Stack(
                 alignment: Alignment.bottomRight,
                 children: [
@@ -139,6 +214,50 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 10),
             Text(user?.email ?? '', style: const TextStyle(color: Colors.black54)),
+            if (_emailStatusLoaded && !_emailVerified)
+              Container(
+                margin: const EdgeInsets.only(top: 10),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text("Your email is not verified. Please check your inbox."),
+                    ),
+                    TextButton(
+                      onPressed: _sendingVerification
+                          ? null
+                          : () async {
+                        setState(() => _sendingVerification = true);
+                        try {
+                          await user?.sendEmailVerification();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Verification email sent.")),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Failed to send email: $e")),
+                          );
+                        } finally {
+                          setState(() => _sendingVerification = false);
+                        }
+                      },
+                      child: _sendingVerification ? const Text("Sending...") : const Text("Resend"),
+                    ),
+                  ],
+                ),
+              ),
+            TextButton.icon(
+              onPressed: _checkEmailVerification,
+              icon: Icon(Icons.refresh),
+              label: Text("Refresh Status"),
+            ),
+
             const SizedBox(height: 20),
 
             // Editable Name
@@ -193,6 +312,50 @@ class _ProfilePageState extends State<ProfilePage> {
               value: themeProvider.themeMode == ThemeMode.dark,
               onChanged: (val) => themeProvider.toggleTheme(val),
             ),
+
+            const SizedBox(height: 30),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text("Change Password", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _currentPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: "Current Password",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _newPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: "New Password",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _confirmPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: "Confirm New Password",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            ElevatedButton.icon(
+              onPressed: _emailVerified ? _changePassword : null,
+              icon: const Icon(Icons.lock_reset),
+              label: const Text("Update Password"),
+            ),
+
 
             const SizedBox(height: 30),
             ElevatedButton.icon(

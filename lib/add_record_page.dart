@@ -24,7 +24,7 @@ class _AddRecordPageState extends State<AddRecordPage> {
   final TextEditingController _noteController = TextEditingController();
 
   final List<Map<String, dynamic>> categories = [
-    {'name': 'Food', 'icon': Icons.fastfood},
+    {'name': 'Food & Beverage', 'icon': Icons.fastfood},
     {'name': 'Transport', 'icon': Icons.directions_car},
     {'name': 'Shopping', 'icon': Icons.shopping_bag},
     {'name': 'Bills', 'icon': Icons.account_balance_rounded},
