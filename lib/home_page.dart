@@ -934,13 +934,13 @@ class _HomePageState extends State<HomePage> with RouteAware{
                                     sections: [
                                       PieChartSectionData(
                                         value: income,
-                                        color: Colors.blueGrey,
+                                        color: Color(0xFF98aeb6),
                                         title:
                                         '${((income / (income + spending)) * 100).toStringAsFixed(0)}%',
                                       ),
                                       PieChartSectionData(
                                         value: spending,
-                                        color: Colors.pinkAccent,
+                                        color: Color(0xFFD77988),
                                         title:
                                         '${((spending / (income + spending)) * 100).toStringAsFixed(0)}%',
                                       ),

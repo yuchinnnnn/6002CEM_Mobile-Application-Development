@@ -169,7 +169,7 @@ class _LoginPageState extends State<LoginPage> {
                       child: Text(
                         'Forget Password',
                         style: TextStyle(
-                          color: Colors.blue, // Optional: make it look like a link
+                          color: Colors.black, // Optional: make it look like a link
                           decoration: TextDecoration.underline,
                         ),
                       ),
