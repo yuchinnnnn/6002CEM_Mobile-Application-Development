@@ -78,6 +78,13 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  bool toggleChecked = false;
+  void passwordToggle(){
+    setState(() {
+      toggleChecked = !toggleChecked;
+    });
+  }
+
   @override
   void dispose() {
     _loginEmail.dispose();
@@ -125,11 +132,17 @@ class _LoginPageState extends State<LoginPage> {
               // Password Field
               TextField(
                 controller: _loginPassword, // ✅ Controller added
-                obscureText: true,
+                obscureText: !toggleChecked,
                 decoration: InputDecoration(
                   labelText: "Password",
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
+                  ),
+                  suffixIcon: IconButton(
+                    onPressed: passwordToggle,
+                    icon: Icon(
+                      toggleChecked ? Icons.visibility : Icons.visibility_off,
+                    ),
                   ),
                 ),
               ),
@@ -219,7 +232,7 @@ class _LoginPageState extends State<LoginPage> {
 
                       // TODO: Navigate to the home page or dashboard after login
                       // Replace LoginPage with your actual home screen widget
-                      Navigator.pushReplacement(
+                      Navigator.pop(
                         context,
                         MaterialPageRoute(
                           builder:

@@ -1,6 +1,11 @@
 // signup_page1.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:spend_simple/signup_page2.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 
 class SignupPage1 extends StatefulWidget {
   const SignupPage1({super.key});
@@ -10,6 +15,52 @@ class SignupPage1 extends StatefulWidget {
 }
 
 class _SignupPage1State extends State<SignupPage1> {
+
+  Future<void> signInWithGoogle(BuildContext context) async {
+    try {
+      final GoogleSignIn googleSignIn = kIsWeb
+          ? GoogleSignIn(clientId: '380869353358-u6smm901d6p3j1p3uvqq1dqji7otnnup.apps.googleusercontent.com')
+          : GoogleSignIn();
+
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) return; // User canceled
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Sign in with Firebase
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      // Save user to Firestore if not exists
+      final user = FirebaseAuth.instance.currentUser;
+      final userDoc = FirebaseFirestore.instance.collection('users').doc(user!.uid);
+      final docSnapshot = await userDoc.get();
+
+      if (!docSnapshot.exists) {
+        await userDoc.set({
+          'uid': user.uid,
+          'username': user.displayName,
+          'email': user.email,
+          // 'password': user.password,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // Navigate to homepage
+      Navigator.pushReplacementNamed(context, '/home'); // or use MaterialPageRoute
+
+    } catch (e) {
+      print("❌ Google Sign-In error: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Google Sign-in failed: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -49,11 +100,7 @@ class _SignupPage1State extends State<SignupPage1> {
                   ],
                 ),
                 child: ElevatedButton(
-                  onPressed: () {
-                    // Navigator.push(
-                    //     context,
-                    //     MaterialPageRoute(builder: (context) => const LoginPage()));
-                  },
+                  onPressed: () => signInWithGoogle(context),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
                     shadowColor: Colors.transparent,
