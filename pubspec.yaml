@@ -51,8 +51,11 @@ dependencies:
   provider: ^6.1.2
   easy_localization: ^3.0.0
   image_picker: ^1.1.2
-  http: ^0.13.6
+  http: ^1.2.1
   universal_io: ^2.2.0
+  google_sign_in: ^6.1.5
+  flutter_facebook_auth: ^6.1.0
+
 
   flutter_localizations:
     sdk: flutter
