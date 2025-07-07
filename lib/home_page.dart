@@ -400,13 +400,6 @@ class _HomePageState extends State<HomePage> with RouteAware{
 
   }
 
-
-  void _savePresets() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String> encodedList = _presetEntries.map((e) => e.toString()).toList();
-    prefs.setStringList('presetEntries', encodedList);
-  }
-
   double income = 0.0;
   double spending = 0.0;
   bool showOverspendingWarning = false;
@@ -420,7 +413,6 @@ class _HomePageState extends State<HomePage> with RouteAware{
         showOverspendingWarning = true;
       });
     });
-
 
     _fetchUsername();
     _loadPresets();
@@ -710,6 +702,20 @@ class _HomePageState extends State<HomePage> with RouteAware{
   bool isOverspending(double income, double spending) {
     return spending > income;
   }
+
+  // void _sendAllTestNotifications() async {
+  //   await sendNotification("Test Notification", "This is a general test message.");
+  //   await sendNotification("High Spending Alert", "You’ve spent over RM100 this month.");
+  //   await sendNotification("Great Job!", "You’ve earned over RM1000 this month.");
+  //   await sendNotification("It’s been a while!", "You haven’t logged any transactions in 3 days.");
+  //   await sendNotification("We miss you!", "You haven’t logged any expenses for over a week.");
+  //   await sendNotification("Monthly Report Ready", "Your monthly report is ready.");
+  //   await sendNotification("Daily Spending", "You’ve spent RM50.00 today.");
+  //
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     const SnackBar(content: Text("All test notifications sent!")),
+  //   );
+  // }
 
 
   @override

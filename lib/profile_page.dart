@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import 'theme_provider.dart';
 import 'dart:html' as html;
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -16,9 +14,6 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   final user = FirebaseAuth.instance.currentUser;
   final _nameController = TextEditingController();
-  bool _notificationsEnabled = true;
-  String _selectedLanguage = 'English';
-  bool _isDarkMode = false;
   String? userImageUrl;
 
   final _currentPasswordController = TextEditingController();
@@ -178,7 +173,6 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final metadata = user?.metadata;
-    final themeProvider = Provider.of<ThemeProvider>(context);
     return Scaffold(
       backgroundColor: const Color(0xFFf2ede9),
       appBar: AppBar(
@@ -279,39 +273,6 @@ class _ProfilePageState extends State<ProfilePage> {
             _infoRow("UID", user?.uid ?? '', copyable: true),
             _infoRow("Member Since", metadata?.creationTime?.toString().split('.')[0] ?? '-'),
             _infoRow("Last Login", metadata?.lastSignInTime?.toString().split('.')[0] ?? '-'),
-            const SizedBox(height: 30),
-
-            // App Settings
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text("App Settings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 10),
-
-            SwitchListTile(
-              value: _notificationsEnabled,
-              onChanged: (val) => setState(() => _notificationsEnabled = val),
-              title: const Text("Enable Notifications"),
-              secondary: const Icon(Icons.notifications_active),
-            ),
-
-            ListTile(
-              title: const Text("Language"),
-              leading: const Icon(Icons.language),
-              trailing: DropdownButton<String>(
-                value: _selectedLanguage,
-                onChanged: (val) => setState(() => _selectedLanguage = val!),
-                items: ['English', 'Malay', 'Chinese']
-                    .map((lang) => DropdownMenuItem(value: lang, child: Text(lang)))
-                    .toList(),
-              ),
-            ),
-
-            SwitchListTile(
-              title: const Text("Dark Mode"),
-              value: themeProvider.themeMode == ThemeMode.dark,
-              onChanged: (val) => themeProvider.toggleTheme(val),
-            ),
 
             const SizedBox(height: 30),
             const Align(
